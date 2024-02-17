@@ -1,13 +1,9 @@
 import yt_dlp
 from yt_dlp.utils import download_range_func
-import os
 
 def sync_files():
-    # get working directory
-    CWD = os.getcwd()
-
     # get bgm list file and read lines from it
-    bgm_list_file = open(CWD + '/bgm/bgm_list.txt', 'r')
+    bgm_list_file = open('bgm/bgm_list.txt', 'r')
     lines = bgm_list_file.readlines()
 
     # sync individual line
@@ -15,7 +11,7 @@ def sync_files():
         data = line.strip().split(' ')
         if len(data) == 1: # no starting timestamp
             ydl_opt = {
-                'outtmpl': f"{CWD}/bgm/mp3/{data[0][32:]}",
+                'outtmpl': f"bgm/mp3/{data[0][32:]}",
                 'format': 'bestaudio/best',
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
@@ -25,7 +21,7 @@ def sync_files():
             }
         else: # starting timestamp
             ydl_opt = {
-                'outtmpl': f"{CWD}/bgm/mp3/{data[0][32:]}",
+                'outtmpl': f"bgm/mp3/{data[0][32:]}",
                 'format': 'bestaudio/best',
                 'download_ranges': download_range_func(None, [(int(data[1]), int(data[1]) + 60)]),
                 'force_keyframes_at_cuts': True,
