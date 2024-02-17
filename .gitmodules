@@ -1,3 +1,6 @@
 [submodule "libraries/TikTok-Voice-TTS"]
 	path = libraries/TikTok-Voice-TTS
 	url = https://github.com/Giooorgiooo/TikTok-Voice-TTS
+[submodule "libraries/NaverTTS"]
+	path = libraries/NaverTTS
+	url = https://github.com/scottgigante/NaverTTS
