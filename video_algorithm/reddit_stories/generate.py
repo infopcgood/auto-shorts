@@ -9,11 +9,20 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 from moviepy.editor import *
+from moviepy.config import change_settings
+from moviepy.video.fx.resize import resize
+from dotenv import dotenv_values
+
+DOTENV_CONFIG = dotenv_values(".env")
+change_settings({"FFMPEG_BINARY":"ffmpeg"})
 
 CWD = os.getcwd()
 sys.path.append("bgv/")
+sys.path.append("libraries/")
 
 from get_clip import get_clip
+
+from tiktok_uploader.upload import upload_video
 
 def get_pending_posts():
     pending_file = open('video_algorithm/reddit_stories/pending_posts.txt', "r")
@@ -50,57 +59,70 @@ def get_post_info(driver, post):
         text = p.text
         if text.find("Upvote") != -1:
             break
-        body += re.findall('[^.,:;?!]+|.,:;?!', text.replace('“', '').replace('”', ''))
+        body += re.findall('[^.…,\-~:;?!]+|.…,-~:;?!', text.replace('“', '').replace('”', ''))
     return {"title": title, "body": body}
 
 def generate_video(driver, post):
     post_info_dict = get_post_info(driver, post)
-    NaverTTS(post_info_dict["title"], lang="en").save("video_algorithm/reddit_stories/tmp/atitle.mp3")
+    NaverTTS(post_info_dict["title"], lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]).save("video_algorithm/reddit_stories/tmp/atitle.mp3")
     body_tts = []
-    for line in post_info_dict["body"]:
-        continue
-        body_tts.append(NaverTTS(line, lang="en"))
+    for i, line in enumerate(post_info_dict["body"]):
+        print('Connecting to API', i)
+        try:
+            body_tts.append(NaverTTS(line, lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]))
+        except:
+            continue
     for i, tts in enumerate(body_tts):
-        continue
-        tts.save(f"video_algorithm/reddit_stories/tmp/body{i:03}.mp3")
-    for i in range(len(body_tts)):
-        while not os.path.isfile(f"video_algorithm/reddit_stories/tmp/body{i:03}.mp3"):
-            trash_do_nothing_variable = 1 + 1
+        print('Starting audio download', i)
+        try:
+            tts.save(f"video_algorithm/reddit_stories/tmp/body{i:03}.mp3")
+            time.sleep(0.03)
+        except Exception as e:
+            print(e)
     time.sleep(3)
     print("tts generation done!")
 
-    FONT_NAME = "IBM-Plex-Sans"
+    SCREEN_SIZE = (720, 1280)
+    TEXT_BIG_SIZE = (350 * 5, 240 * 5)
+    TEXT_FIT_SIZE = (350, 240)
+    FONT_NAME = "Argentum-Sans-ExtraBold"
 
-    empty_audio_clip = AudioClip(lambda t: 0, duration = 0.4)
+    empty_audio_clip = AudioClip(lambda t: 0, duration = 0.03)
     duration = 0
     duration_index = []
     audiocliparr = []
     videocliparr = []
-    for i, audio_filename in enumerate(os.listdir('video_algorithm/reddit_stories/tmp/')):
+    for i, audio_filename in enumerate(sorted(os.listdir('video_algorithm/reddit_stories/tmp/'))):
         print(f'audio {i}')
         try:
-            textclip = TextClip(post_info_dict["body"][i-1] if i>0 else post_info_dict["title"], color='white', stroke_color='black', stroke_width = 2.5, font= FONT_NAME)
-            textclip.set_start(duration)
+            textclip = resize(TextClip(post_info_dict["body"][i-1] if i>0 else post_info_dict["title"], color='white', stroke_color='black', stroke_width = 6.66, font= FONT_NAME, size=TEXT_BIG_SIZE, align='center', method='caption'), width = 350, height=240).set_position((185, 520))
             audioclip = AudioFileClip('video_algorithm/reddit_stories/tmp/' + audio_filename)
-            textclip.set_end(duration + audioclip.duration + 0.1)
-            audiocliparr += [audioclip, empty_audio_clip]
-            duration += audioclip.duration + 0.4
-            videocliparr.append(textclip)
-        except:
+            audiocliparr += [audioclip.set_start(duration), empty_audio_clip]
+            videocliparr.append(textclip.set_start(duration).set_end(duration + audioclip.duration))
+            duration += audioclip.duration + 0.03
+            if duration >= 90:
+                break
+        except Exception as e:
+            print(e)
             continue
-    
-    videocliparr = [get_clip(duration)] + videocliparr
+    print(duration)
 
-    final_video = CompositeVideoClip(videocliparr)
+    videocliparr = [resize(get_clip(duration), width=720, height=1280)] + videocliparr
+
+    final_video = CompositeVideoClip(videocliparr, size=(720, 1280))
     final_audio = CompositeAudioClip(audiocliparr)
     final_video.audio = final_audio
     final_video.duration = duration
-    final_video.write_videofile(f"{post.split('/')[6]}.mp4", codec="h264_nvenc")
-    input("Finished!")
+    final_video.write_videofile(f"[REDDIT] {post_info_dict['title']}.mp4", codec="h264_nvenc", ffmpeg_params=["-crf", "28"])
+    return f"[REDDIT] {post_info_dict['title']}.mp4", post_info_dict["title"]
+
+def upload_to_tiktok(driver, video_filename, title):
+    upload_video(video_filename, title, 'tiktok-cookies.txt', stitch=False, duet=False)
+    input("Upload complete, check!")
 
 def generate(update_post_list = False):
     # initialize geckodriver
-    geckodriver_service = Service(executable_path=r'./geckodriver')
+    geckodriver_service = Service()
     geckodriver_options = Options()
     geckodriver_options.add_argument("--headless")
     driver = webdriver.Firefox(service=geckodriver_service, options=geckodriver_options)
@@ -112,7 +134,9 @@ def generate(update_post_list = False):
 
     for post in posts_list:
         post.strip()
-        video_filename = generate_video(driver, post)
+        # video_filename, title = "[REDDIT] My husband started teasing me after I suffered a serious head injury. I literally can't go on like this..mp4", "My husband started teasing me after I suffered a serious head injury. I literally can't go on like this."
+        video_filename, title = generate_video(driver, post)
+        upload_to_tiktok(driver, video_filename, "[REDDIT] "+title)
         posts_list.remove(post)
     
     driver.close()

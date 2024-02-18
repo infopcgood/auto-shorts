@@ -1,6 +1,7 @@
 import random
 import os 
 from moviepy.editor import *
+from moviepy.video.fx.resize import resize
 
 def get_clip(duration):
     current_duration = 0
@@ -8,9 +9,9 @@ def get_clip(duration):
     video_list = list(os.listdir('bgv/mp4/')) * 50
     random.shuffle(video_list)
     for video in video_list:
-        clip = VideoFileClip('bgv/mp4/'+video, target_resolution=(1080, 1920), audio=False)
+        clip = resize(VideoFileClip('bgv/mp4/'+video, audio=False), width=720, height=1280)
         current_duration += clip.duration
         cliparr.append(clip)
         if current_duration > duration + 1:
             break
-    return concatenate_videoclips(cliparr).set_duration(duration + 1)
+    return concatenate_videoclips(cliparr)

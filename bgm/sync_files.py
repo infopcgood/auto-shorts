@@ -23,7 +23,7 @@ def sync_files():
             ydl_opt = {
                 'outtmpl': f"bgm/mp3/{data[0][32:]}",
                 'format': 'bestaudio/best',
-                'download_ranges': download_range_func(None, [(int(data[1]), int(data[1]) + 60)]),
+                'download_ranges': download_range_func(None, [(int(data[1]), int(data[1]) + 90)]),
                 'force_keyframes_at_cuts': True,
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
