@@ -12,17 +12,23 @@ from moviepy.editor import *
 from moviepy.config import change_settings
 from moviepy.video.fx.resize import resize
 from dotenv import dotenv_values
+from youtube_up import AllowCommentsEnum, Metadata, PrivacyEnum, YTUploaderSession
+import json
+import asyncio
+from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 
 DOTENV_CONFIG = dotenv_values(".env")
 change_settings({"FFMPEG_BINARY":"ffmpeg"})
 
 CWD = os.getcwd()
 sys.path.append("bgv/")
-sys.path.append("libraries/")
+sys.path.append("uploaders/")
 
 from get_clip import get_clip
 
-from tiktok_uploader.upload import upload_video
+def clear_tmp():
+    for f in os.listdir('video_algorithm/reddit_stories/tmp/'):
+        os.remove('video_algorithm/reddit_stories/tmp/'+f)
 
 def get_pending_posts():
     pending_file = open('video_algorithm/reddit_stories/pending_posts.txt', "r")
@@ -59,66 +65,80 @@ def get_post_info(driver, post):
         text = p.text
         if text.find("Upvote") != -1:
             break
-        body += re.findall('[^.…,\-~:;?!]+|.…,-~:;?!', text.replace('“', '').replace('”', ''))
+        body += re.findall('[^.…,~:;?!]+|.…,~:;?!', text.replace('“', '').replace('”', ''))
     return {"title": title, "body": body}
 
-def generate_video(driver, post):
-    post_info_dict = get_post_info(driver, post)
-    NaverTTS(post_info_dict["title"], lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]).save("video_algorithm/reddit_stories/tmp/atitle.mp3")
-    body_tts = []
-    for i, line in enumerate(post_info_dict["body"]):
-        print('Connecting to API', i)
-        try:
-            body_tts.append(NaverTTS(line, lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]))
-        except:
-            continue
-    for i, tts in enumerate(body_tts):
-        print('Starting audio download', i)
-        try:
-            tts.save(f"video_algorithm/reddit_stories/tmp/body{i:03}.mp3")
-            time.sleep(0.03)
-        except Exception as e:
-            print(e)
-    time.sleep(3)
-    print("tts generation done!")
+def generate_video(driver, post_info_dict):
+    clear_tmp()
+    if not os.path.exists("[REDDIT] "+post_info_dict["title"]+".mp4"):
+        NaverTTS(post_info_dict["title"], lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]).save("video_algorithm/reddit_stories/tmp/atitle.mp3")
+        body_tts = []
+        for i, line in enumerate(post_info_dict["body"]):
+            print('Connecting to API', i)
+            try:
+                body_tts.append(NaverTTS(line, lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]))
+            except:
+                continue
+        for i, tts in enumerate(body_tts):
+            print('Starting audio download', i)
+            try:
+                tts.save(f"video_algorithm/reddit_stories/tmp/body{i:03}.mp3")
+                time.sleep(0.03)
+            except Exception as e:
+                print(e)
+        time.sleep(3)
+        print("tts generation done!")
 
-    SCREEN_SIZE = (720, 1280)
-    TEXT_BIG_SIZE = (350 * 5, 240 * 5)
-    TEXT_FIT_SIZE = (350, 240)
-    FONT_NAME = "Argentum-Sans-ExtraBold"
+        SCREEN_SIZE = (720, 1280)
+        TEXT_BIG_SIZE = (350 * 5, 200 * 5)
+        TEXT_FIT_SIZE = (350, 200)
+        FONT_NAME = "Argentum-Sans-ExtraBold"
 
-    empty_audio_clip = AudioClip(lambda t: 0, duration = 0.03)
-    duration = 0
-    duration_index = []
-    audiocliparr = []
-    videocliparr = []
-    for i, audio_filename in enumerate(sorted(os.listdir('video_algorithm/reddit_stories/tmp/'))):
-        print(f'audio {i}')
-        try:
-            textclip = resize(TextClip(post_info_dict["body"][i-1] if i>0 else post_info_dict["title"], color='white', stroke_color='black', stroke_width = 6.66, font= FONT_NAME, size=TEXT_BIG_SIZE, align='center', method='caption'), width = 350, height=240).set_position((185, 520))
-            audioclip = AudioFileClip('video_algorithm/reddit_stories/tmp/' + audio_filename)
-            audiocliparr += [audioclip.set_start(duration), empty_audio_clip]
-            videocliparr.append(textclip.set_start(duration).set_end(duration + audioclip.duration))
-            duration += audioclip.duration + 0.03
-            if duration >= 90:
-                break
-        except Exception as e:
-            print(e)
-            continue
-    print(duration)
+        empty_audio_clip = AudioClip(lambda t: 0, duration = 0.03)
+        duration = 0
+        duration_index = []
+        audiocliparr = []
+        videocliparr = []
+        for i, audio_filename in enumerate(sorted(os.listdir('video_algorithm/reddit_stories/tmp/'))):
+            print(f'audio {i}')
+            try:
+                textclip = resize(TextClip(post_info_dict["body"][i-1].upper() if i>0 else post_info_dict["title"], color='white' if i>0 else 'black', stroke_color='black', stroke_width = 6.66 if i>0 else 0, font= FONT_NAME, size=TEXT_BIG_SIZE, align='center', method='caption'), width = 350, height=200).set_position((185, 540))
+                audioclip = AudioFileClip('video_algorithm/reddit_stories/tmp/' + audio_filename)
+                audiocliparr += [audioclip.set_start(duration), empty_audio_clip]
+                videocliparr.append(textclip.set_start(duration).set_end(duration + audioclip.duration))
+                duration += audioclip.duration + 0.03
+                if duration > 60:
+                    break
+            except Exception as e:
+                print(e)
+                continue
+        print(duration)
 
-    videocliparr = [resize(get_clip(duration), width=720, height=1280)] + videocliparr
+        title_image_clip = ImageClip("video_algorithm/reddit_stories/sbrshorts.png", duration=audiocliparr[0].duration).set_start(0)
+        videocliparr = [resize(get_clip(duration), width=720, height=1280), title_image_clip] + videocliparr
 
-    final_video = CompositeVideoClip(videocliparr, size=(720, 1280))
-    final_audio = CompositeAudioClip(audiocliparr)
-    final_video.audio = final_audio
-    final_video.duration = duration
-    final_video.write_videofile(f"[REDDIT] {post_info_dict['title']}.mp4", codec="h264_nvenc", ffmpeg_params=["-crf", "28"])
+        final_video = CompositeVideoClip(videocliparr, size=(720, 1280))
+        final_audio = CompositeAudioClip(audiocliparr)
+        final_video.audio = final_audio
+        final_video.duration = 60
+        final_video.set_duration(60)
+        final_video.write_videofile(f"uncut_[REDDIT] {post_info_dict['title']}.mp4", codec="h264_nvenc", ffmpeg_params=["-crf", "28"])
+        ffmpeg_extract_subclip(f"uncut_[REDDIT] {post_info_dict['title']}.mp4", 0, 59.95, f"[REDDIT] {post_info_dict['title']}.mp4")
+    
     return f"[REDDIT] {post_info_dict['title']}.mp4", post_info_dict["title"]
 
-def upload_to_tiktok(driver, video_filename, title):
-    upload_video(video_filename, title, 'tiktok-cookies.txt', stitch=False, duet=False)
-    input("Upload complete, check!")
+def upload(filename, options):
+    uploader = YTUploaderSession.from_cookies_txt('cookies-youtube-com.txt')
+    metadata = Metadata(
+        title=options["title"],
+        description=options["description"],
+        privacy=PrivacyEnum.PUBLIC,
+        made_for_kids=False,
+        tags=options["keywords"].split(", "),
+        allow_comments_mode=AllowCommentsEnum.ALL_COMMENTS
+    )
+    uploader.upload(filename, metadata)
+    print("Uploaded!")
 
 def generate(update_post_list = False):
     # initialize geckodriver
@@ -134,9 +154,10 @@ def generate(update_post_list = False):
 
     for post in posts_list:
         post.strip()
-        # video_filename, title = "[REDDIT] My husband started teasing me after I suffered a serious head injury. I literally can't go on like this..mp4", "My husband started teasing me after I suffered a serious head injury. I literally can't go on like this."
-        video_filename, title = generate_video(driver, post)
-        upload_to_tiktok(driver, video_filename, "[REDDIT] "+title)
+        post_info_dict = get_post_info(driver, post)
+        if not ((post_info_dict["title"].lower().find('part') + 1) or (post_info_dict["title"].lower().find('pt.') + 1)):
+            video_filename, title = generate_video(driver, post_info_dict)
+            upload(video_filename, {"title": "#shorts #redditstories #scary #horror", "description": title, "keywords": "shorts, reddit, stories, redditstories, redditshorts, redditvideos, scary, tales, posts, stories, redditor, nosleep, mildlyinfuriating, scarystories"})
         posts_list.remove(post)
     
     driver.close()

@@ -1,9 +1,14 @@
-# No audio files on GitHub
+# No media files on GitHub
 *.mp3
 *.mp4
+*.webm
 
 # no auth info
 tiktok-cookies.txt
+client_secrets.json
+*-oauth2.json
+cookies.json
+cookies-youtube-com.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

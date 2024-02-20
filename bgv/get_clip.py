@@ -10,8 +10,11 @@ def get_clip(duration):
     random.shuffle(video_list)
     for video in video_list:
         clip = resize(VideoFileClip('bgv/mp4/'+video, audio=False), width=720, height=1280)
+        if current_duration + clip.duration >= duration:
+            start_time = random.uniform(0, clip.duration - (duration - current_duration))
+            clip = clip.cutout(start_time, start_time + (duration - current_duration))
         current_duration += clip.duration
         cliparr.append(clip)
-        if current_duration > duration + 1:
+        if current_duration >= duration:
             break
     return concatenate_videoclips(cliparr)
