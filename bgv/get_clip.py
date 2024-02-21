@@ -9,9 +9,10 @@ def get_clip(duration):
     video_list = list(os.listdir('bgv/mp4/')) * 50
     random.shuffle(video_list)
     for video in video_list:
-        clip = resize(VideoFileClip('bgv/mp4/'+video, audio=False), width=720, height=1280)
+        clip = resize(VideoFileClip('bgv/mp4/'+video, audio=False), width=1080, height=1920)
         if current_duration + clip.duration >= duration:
             start_time = random.uniform(0, clip.duration - (duration - current_duration))
+            print(start_time)
             clip = clip.cutout(start_time, start_time + (duration - current_duration))
         current_duration += clip.duration
         cliparr.append(clip)
