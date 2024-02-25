@@ -11,13 +11,11 @@ from selenium.webdriver.firefox.service import Service
 from moviepy.editor import *
 from moviepy.config import change_settings
 from moviepy.video.fx.resize import resize
-from dotenv import dotenv_values
 from youtube_up import AllowCommentsEnum, Metadata, PrivacyEnum, YTUploaderSession
 import json
 import asyncio
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 
-DOTENV_CONFIG = dotenv_values(".env")
 change_settings({"FFMPEG_BINARY":"ffmpeg"})
 
 CWD = os.getcwd()
@@ -37,6 +35,9 @@ def get_pending_posts():
     return pending_posts_list
 
 def get_popular_reddit_post(driver):
+    history_file = open("video_algorithm/reddit_stories/history.txt", "r")
+    history_list = history_file.readlines()
+    history_file.close()
     pending_posts_list = get_pending_posts()
     pending_file = open('video_algorithm/reddit_stories/pending_posts.txt', "a")
     driver.get('https://www.reddit.com/r/nosleep/top/?t=month')
@@ -47,7 +48,7 @@ def get_popular_reddit_post(driver):
     all_posts = driver.find_elements(By.CSS_SELECTOR, "article.w-full > shreddit-post") + driver.find_elements(By.CSS_SELECTOR, "#main-content > div > faceplate-batch > article > shreddit-post")
     for post in all_posts:
         url = post.get_attribute("content-href")+"\n"
-        if not (url in pending_posts_list):
+        if not (url in pending_posts_list and url in history_list):
             pending_file.write(url)
     pending_file.close()
 
@@ -67,7 +68,7 @@ def get_post_info(driver, post):
         body += re.findall('[^.…,~:;?!]+|.…,~:;?!', text.replace('“', '').replace('”', ''))
     return {"title": title, "body": body}
 
-def generate_video(driver, post_info_dict):
+def generate_video(driver, full_video, post_info_dict):
     clear_tmp()
     if not os.path.exists("[REDDIT] "+post_info_dict["title"]+".mp4"):
         NaverTTS(post_info_dict["title"], lang="en", speed=-2, lang_check=False, pre_processor_funcs=[]).save("video_algorithm/reddit_stories/tmp/atitle.mp3")
@@ -108,7 +109,7 @@ def generate_video(driver, post_info_dict):
                 audiocliparr += [audioclip.set_start(duration), empty_audio_clip]
                 videocliparr.append(textclip.set_start(duration).set_end(duration + audioclip.duration))
                 duration += audioclip.duration + 0.04
-                if not full_video and duration >= 60:
+                if (not full_video) and duration >= 60:
                     break
             except Exception as e:
                 print(e)
@@ -157,8 +158,7 @@ def generate(update_post_list = False, full_video = False):
         print("Generating", post)
         post_info_dict = get_post_info(driver, post)
         if not ((post_info_dict["title"].lower().find('part ') + 1) or (post_info_dict["title"].lower().find('pt. ') + 1) or (post_info_dict["body"][0].lower().find('part') == 0)):
-            video_filename, title = generate_video(driver, post_info_dict)
-            input('Waiting.')
+            video_filename, title = generate_video(driver, full_video, post_info_dict)
             upload(video_filename, {"title": "#shorts #redditstories #scary #horror", "description": title, "keywords": "shorts, reddit, stories, redditstories, redditshorts, redditvideos, scary, horror, tales, posts, stories, redditor, nosleep, mildlyinfuriating, scarystories"})
             if full_video:
                 upload("uncut_"+video_filename, {"title": title, "description": title+"\n\nHey, please subscribe & like if you want to support me!\n\n\n\n\n\n\n\nreddit, stories, redditstories, redditshorts, redditvideos, scary, horror, tales, posts, stories, redditor, nosleep, mildlyinfuriating, scarystories", "keywords": "reddit, stories, redditstories, redditshorts, redditvideos, scary, horror, tales, posts, stories, redditor, nosleep, mildlyinfuriating, scarystories"})
@@ -176,4 +176,4 @@ def generate(update_post_list = False, full_video = False):
     driver.close()
 
 if __name__ == "__main__":
-    generate(False)
+    generate(False, False)
